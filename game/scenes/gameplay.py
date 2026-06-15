@@ -4,7 +4,7 @@
 import pygame
 import random
 from game.settings import (
-    SCREEN_WIDTH, SCREEN_HEIGHT, FPS,
+    SCREEN_WIDTH, SCREEN_HEIGHT,
     BLACK, WHITE, CYAN, YELLOW, RED, GRAY, GREEN,
     ENEMY_ROWS, ENEMY_COLS, POINTS_PER_LEVEL, SHIPS
 )
@@ -16,14 +16,14 @@ from game.utils.pixel_art    import draw_sprite, ALL_SHIPS
 
 
 class HUD:
-    """Dibuja puntaje, vidas y nivel en pantalla."""
+    """Dibuja puntaje, vidas, nivel y estado de mute."""
 
     def __init__(self, screen):
         self.screen = screen
         self.font   = pygame.font.SysFont('Courier New', 15, bold=True)
 
     def draw(self, score: int, lives: int, level: int,
-             ship_color, ship_index: int):
+             ship_color, ship_index: int, muted: bool = False):
         # Puntaje
         t = self.font.render(f"SCORE  {score:06d}", True, WHITE)
         self.screen.blit(t, (10, 8))
@@ -31,6 +31,13 @@ class HUD:
         # Nivel
         t2 = self.font.render(f"LVL {level}", True, CYAN)
         self.screen.blit(t2, (SCREEN_WIDTH // 2 - 25, 8))
+
+        # Indicador de mute
+        if muted:
+            tm = self.font.render("M:MUTED", True, GRAY)
+        else:
+            tm = self.font.render("M:SOUND", True, GREEN)
+        self.screen.blit(tm, (SCREEN_WIDTH // 2 + 45, 8))
 
         # Vidas (miniaturas de la nave)
         matrix = ALL_SHIPS[ship_index]
@@ -49,26 +56,27 @@ class GameplayScene:
     """
     Escena de juego principal.
     Recibe ship_index y level (para niveles sucesivos).
+    sound se pasa en update() desde el engine.
     """
 
     def __init__(self, screen: pygame.Surface,
                  ship_index: int, level: int = 1):
-        self.screen     = screen
-        self.level      = level
-        self.ship_data  = SHIPS[ship_index]
+        self.screen    = screen
+        self.level     = level
+        self.ship_data = SHIPS[ship_index]
 
         # Entidades
-        self.player     = Player(ship_index, self.ship_data)
-        self.enemies    = EnemyGroup(ENEMY_ROWS, ENEMY_COLS, level)
-        self.hud        = HUD(screen)
+        self.player  = Player(ship_index, self.ship_data)
+        self.enemies = EnemyGroup(ENEMY_ROWS, ENEMY_COLS, level)
+        self.hud     = HUD(screen)
 
         # Grupos de sprites
-        self.player_group    = pygame.sprite.GroupSingle(self.player)
-        self.player_bullets  = pygame.sprite.Group()
-        self.enemy_bullets   = pygame.sprite.Group()
-        self.explosions      = pygame.sprite.Group()
+        self.player_group   = pygame.sprite.GroupSingle(self.player)
+        self.player_bullets = pygame.sprite.Group()
+        self.enemy_bullets  = pygame.sprite.Group()
+        self.explosions     = pygame.sprite.Group()
 
-        # Estrellas de fondo (reutilizamos la misma lógica simple)
+        # Estrellas de fondo
         self.stars = [
             [random.randint(0, SCREEN_WIDTH),
              random.randint(0, SCREEN_HEIGHT),
@@ -87,6 +95,8 @@ class GameplayScene:
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     return 'intro'
+                if event.key == pygame.K_m:
+                    sound.toggle_mute()
 
         keys = pygame.key.get_pressed()
 
@@ -107,7 +117,7 @@ class GameplayScene:
                        color=RED, direction=1)
             )
 
-        # Balas
+        # Balas y explosiones
         self.player_bullets.update()
         self.enemy_bullets.update()
         self.explosions.update()
@@ -152,7 +162,7 @@ class GameplayScene:
 
     # ── Dibujo ──────────────────────────────────────────────────
 
-    def draw(self):
+    def draw(self, sound=None):
         self.screen.fill(BLACK)
         self._draw_stars()
 
@@ -162,12 +172,14 @@ class GameplayScene:
         self.enemy_bullets.draw(self.screen)
         self.explosions.draw(self.screen)
 
+        muted = sound.is_muted() if sound else False
         self.hud.draw(
             self.player.score,
             self.player.lives,
             self.level,
             self.ship_data['color'],
-            self.player.ship_index
+            self.player.ship_index,
+            muted
         )
 
     def _draw_stars(self):
